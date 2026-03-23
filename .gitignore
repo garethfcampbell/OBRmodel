@@ -1,0 +1,13 @@
+__pycache__/
+*.py[cod]
+*.pyo
+.env
+.cache/
+.pythonlibs/
+.upm/
+.replit
+uv.lock
+gunicorn.ctl
+.agents/
+.local/
+attached_assets/
