@@ -340,9 +340,11 @@
 
         let fullText = '';
         let renderPending = false;
+        let streamDone = false;
 
         function renderContent() {
             renderPending = false;
+            if (streamDone) return;
             messageContent.innerHTML = DOMPurify.sanitize(marked.parse(fullText)) +
                 '<span class="streaming-cursor" style="opacity:0.5;">▍</span>';
             messagesDiv.scrollTop = messagesDiv.scrollHeight;
@@ -393,6 +395,7 @@
                                 scheduleRender();
                             } else if (data.done) {
                                 // Final render without cursor
+                                streamDone = true;
                                 messageContent.innerHTML = DOMPurify.sanitize(marked.parse(fullText));
                                 messagesDiv.scrollTop = messagesDiv.scrollHeight;
                                 // MathJax typeset
@@ -414,6 +417,7 @@
             }
 
             // Ensure final render — remove streaming cursor
+            streamDone = true;
             if (fullText) {
                 messageContent.innerHTML = DOMPurify.sanitize(marked.parse(fullText));
                 messagesDiv.scrollTop = messagesDiv.scrollHeight;
