@@ -407,8 +407,8 @@
                 }
             }
 
-            // Ensure final render if stream ended without explicit done event
-            if (fullText && !messageContent.querySelector('.streaming-cursor') === false) {
+            // Ensure final render — remove streaming cursor
+            if (fullText) {
                 messageContent.innerHTML = DOMPurify.sanitize(marked.parse(fullText));
                 messagesDiv.scrollTop = messagesDiv.scrollHeight;
             }
