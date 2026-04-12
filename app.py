@@ -46,7 +46,7 @@ def set_security_headers(response):
         "default-src 'self'; "
         "script-src 'self' 'unsafe-inline' cdn.jsdelivr.net cdnjs.cloudflare.com; "
         "style-src 'self' 'unsafe-inline' cdn.jsdelivr.net cdnjs.cloudflare.com; "
-        "font-src cdnjs.cloudflare.com; "
+        "font-src cdnjs.cloudflare.com cdn.jsdelivr.net; "
         "img-src 'self' data:; "
         "connect-src 'self';"
     )
@@ -332,7 +332,18 @@ CRITICAL FORMATTING REQUIREMENTS:
   2. ### STEP BY STEP ANALYSIS  
   3. ### LONG-RUN OUTCOMES
 - Use proper markdown formatting for headings (### for main headings, #### for step headings)
-- For equations, use simple mathematical notation that can be displayed as plain text
+- When referring to variable names in prose text, use markdown backticks (e.g. `IBUS`, `KGAP`, `GDPMPS`), NOT LaTeX $ symbols
+- For equations, ALWAYS use LaTeX display math with double dollar signs ($$) on their own line with a blank line before and after. For example:
+
+The capital gap is defined as:
+
+$$KGAP = KSTAR - KBUS$$
+
+And business investment responds to:
+
+$$IBUS = f(KGAP, RREAL, PROFITS)$$
+
+- Never put multiple equations on the same line
 - Structure your response clearly with proper paragraph breaks
 - For each step in STEP BY STEP ANALYSIS, the three sub-sections MUST each start on their own new line, formatted exactly like this (including the blank line between each):
 
@@ -343,7 +354,7 @@ CRITICAL FORMATTING REQUIREMENTS:
 [text here]
 
 **c) Equations:**
-[equations here]
+[LaTeX equations here, each on its own line using $$ display math]
 
 Never run a), b) and c) together on the same line or in the same paragraph.
 
@@ -380,7 +391,9 @@ def _build_contextual_messages(user_message, conversation_history):
 CRITICAL FORMATTING REQUIREMENTS:
 - Provide clear, well-structured responses using proper markdown formatting
 - Use proper markdown headings (# ##) for structure
-- For equations, use simple mathematical notation that can be displayed as plain text
+- When referring to variable names in prose text, use markdown backticks (e.g. `IBUS`, `KGAP`), NOT LaTeX $ symbols
+- For equations, ALWAYS use LaTeX display math with double dollar signs ($$) on their own line with a blank line before and after
+- Never put multiple equations on the same line
 - Structure your response with clear paragraph breaks and bullet points where helpful
 - Be direct and concise in your responses
 - If referencing specific model equations or variables, explain them clearly
