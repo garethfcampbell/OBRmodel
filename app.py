@@ -332,17 +332,14 @@ CRITICAL FORMATTING REQUIREMENTS:
   2. ### STEP BY STEP ANALYSIS  
   3. ### LONG-RUN OUTCOMES
 - Use proper markdown formatting for headings (### for main headings, #### for step headings)
-- When referring to variable names in prose text, use markdown backticks (e.g. `IBUS`, `KGAP`, `GDPMPS`), NOT LaTeX $ symbols
-- For equations, ALWAYS use LaTeX display math with double dollar signs ($$) on their own line with a blank line before and after. For example:
+- Use markdown backticks for ALL variable names and equations — both in prose and in the equations sections. For example, write `IBUS`, `KGAP`, `GDPMPS` for individual variables.
+- For equations, use backtick code formatting on their own line, one equation per line. For example:
 
-The capital gap is defined as:
+`KGAP = KSTAR - KBUS`
 
-$$KGAP = KSTAR - KBUS$$
+`IBUS = f(KGAP, RREAL, PROFITS)`
 
-And business investment responds to:
-
-$$IBUS = f(KGAP, RREAL, PROFITS)$$
-
+- Do NOT use LaTeX, dollar signs ($), or double dollar signs ($$) anywhere in the response
 - Never put multiple equations on the same line
 - Structure your response clearly with proper paragraph breaks
 - For each step in STEP BY STEP ANALYSIS, the three sub-sections MUST each start on their own new line, formatted exactly like this (including the blank line between each):
@@ -354,7 +351,7 @@ $$IBUS = f(KGAP, RREAL, PROFITS)$$
 [text here]
 
 **c) Equations:**
-[LaTeX equations here, each on its own line using $$ display math]
+[equations here, each on its own line using backtick code formatting]
 
 Never run a), b) and c) together on the same line or in the same paragraph.
 
@@ -391,9 +388,9 @@ def _build_contextual_messages(user_message, conversation_history):
 CRITICAL FORMATTING REQUIREMENTS:
 - Provide clear, well-structured responses using proper markdown formatting
 - Use proper markdown headings (# ##) for structure
-- When referring to variable names in prose text, use markdown backticks (e.g. `IBUS`, `KGAP`), NOT LaTeX $ symbols
-- For equations, ALWAYS use LaTeX display math with double dollar signs ($$) on their own line with a blank line before and after
-- Never put multiple equations on the same line
+- Use markdown backticks for ALL variable names and equations. For example, write `IBUS`, `KGAP` for variables and `IBUS = f(KGAP, RREAL)` for equations
+- Do NOT use LaTeX, dollar signs ($), or double dollar signs ($$) anywhere in the response
+- Each equation should be on its own line using backtick code formatting
 - Structure your response with clear paragraph breaks and bullet points where helpful
 - Be direct and concise in your responses
 - If referencing specific model equations or variables, explain them clearly
@@ -655,24 +652,14 @@ def calculate():
                 User's question: {user_message}
 
                 CRITICAL FORMATTING REQUIREMENTS:
-                - When referring to variable names in prose text, use markdown backticks (e.g. `IBUS`, `KGAP`, `GDPMPS`), NOT LaTeX $ symbols
-                - For equations, ALWAYS use display math mode with double dollar signs ($$) on their own line, never inline single $ signs. Each equation must be on its own line with a blank line before and after. For example:
-
-                The capital gap is defined as:
-
-                $$KGAP = KSTAR - KBUS$$
-
-                And business investment responds to:
-
-                $$IBUS = f(KGAP, RREAL, PROFITS)$$
-
+                - Use markdown backticks for ALL variable names and equations. For example, write `IBUS`, `KGAP`, `GDPMPS` for variables and `KGAP = KSTAR - KBUS` for equations
+                - Do NOT use LaTeX, dollar signs ($), or double dollar signs ($$) anywhere in the response
+                - Each equation should be on its own line using backtick code formatting
                 - Never put multiple equations on the same line
                 - Use proper markdown headings (# ## ###) for clear section structure
                 - Structure your response with clear step-by-step analysis
-                - Make sure all LaTeX equations are properly formatted for MathJax rendering
-                - Combine markdown formatting with LaTeX for the best presentation
 
-                Please provide a step-by-step analysis of the shock's impact, showing the equations in LaTeX format, interpreted by MathJax.
+                Please provide a step-by-step analysis of the shock's impact, showing the equations using backtick code formatting.
                 """
                 logging.info(f"Calculate prompt length: {len(prompt)} characters")
 
