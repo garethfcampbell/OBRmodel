@@ -295,8 +295,12 @@
         messagesDiv.appendChild(messageDiv);
         messagesDiv.scrollTop = messagesDiv.scrollHeight;
 
-        if (window.MathJax) {
-            MathJax.typesetPromise([messageDiv]);
+        if (content.includes('$')) {
+            loadMathJax().then(function() {
+                if (window.MathJax && MathJax.typesetPromise) {
+                    MathJax.typesetPromise([messageDiv]);
+                }
+            });
         }
     }
 

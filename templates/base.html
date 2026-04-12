@@ -146,11 +146,23 @@
         // Conditional MathJax loader
         let mathJaxLoaded = false;
         function loadMathJax() {
-            if (mathJaxLoaded) return;
+            if (mathJaxLoaded) return Promise.resolve();
             mathJaxLoaded = true;
-            const script = document.createElement('script');
-            script.src = "https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js";
-            document.head.appendChild(script);
+            window.MathJax = {
+                tex: {
+                    inlineMath: [['$', '$']],
+                    displayMath: [['$$', '$$']],
+                },
+                options: {
+                    skipHtmlTags: ['script', 'noscript', 'style', 'textarea', 'pre', 'code']
+                }
+            };
+            return new Promise(function(resolve) {
+                const script = document.createElement('script');
+                script.src = "https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js";
+                script.onload = resolve;
+                document.head.appendChild(script);
+            });
         }
     </script>
     {% block scripts %}{% endblock %}

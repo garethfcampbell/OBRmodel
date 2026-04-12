@@ -549,7 +549,17 @@ def calculate():
 
                 CRITICAL FORMATTING REQUIREMENTS:
                 - When referring to variable names in prose text, use markdown backticks (e.g. `IBUS`, `KGAP`, `GDPMPS`), NOT LaTeX $ symbols
-                - Only use LaTeX $ or $$ symbols for actual mathematical equations and formulas (e.g. $GDPMPS = C + I + G + X - M$)
+                - For equations, ALWAYS use display math mode with double dollar signs ($$) on their own line, never inline single $ signs. Each equation must be on its own line with a blank line before and after. For example:
+
+                The capital gap is defined as:
+
+                $$KGAP = KSTAR - KBUS$$
+
+                And business investment responds to:
+
+                $$IBUS = f(KGAP, RREAL, PROFITS)$$
+
+                - Never put multiple equations on the same line
                 - Use proper markdown headings (# ## ###) for clear section structure
                 - Structure your response with clear step-by-step analysis
                 - Make sure all LaTeX equations are properly formatted for MathJax rendering
