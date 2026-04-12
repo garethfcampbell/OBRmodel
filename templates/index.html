@@ -302,82 +302,10 @@
                 }
             });
         }
+        return messageDiv;
     }
 
-    function pollTask(taskId, type, loadingIndicator, retryCount = 0, startTime = Date.now()) {
-        fetch(`/poll/${taskId}`)
-        .then(response => {
-            // Check if response is ok and content-type is JSON
-            if (!response.ok) {
-                throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-            }
-
-            const contentType = response.headers.get('content-type');
-            if (!contentType || !contentType.includes('application/json')) {
-                throw new Error(`Expected JSON response but got ${contentType}`);
-            }
-
-            return response.json();
-        })
-        .then(data => {
-            if (data.error && data.status !== 'not_found') {
-                loadingIndicator.style.display = 'none';
-                addMessage('assistant', `Error: ${data.error}`);
-                return;
-            }
-
-            if (data.status === 'not_found') {
-                // If task not found and we haven't retried much, try a few more times with backoff
-                if (retryCount < 5) {
-                    const backoffDelay = Math.min(5000 * Math.pow(1.5, retryCount), 15000); // Max 15 seconds
-                    setTimeout(() => pollTask(taskId, type, loadingIndicator, retryCount + 1, startTime), backoffDelay);
-                    return;
-                }
-                loadingIndicator.style.display = 'none';
-                addMessage('assistant', 'Error: Task not found. Please try again.');
-                return;
-            }
-
-            if (data.status === 'completed') {
-                loadingIndicator.style.display = 'none';
-                addMessage('assistant', data.result);
-                if (type === 'initial') {
-                    document.getElementById('initialChatInputContainer').style.display = 'none';
-                    document.getElementById('exampleScenariosContainer').style.display = 'none';
-                    document.getElementById('followUpChatInputContainer').style.display = 'block';
-                    document.getElementById('newScenarioButton').style.display = 'block';
-                }
-            } else if (data.status === 'error') {
-                loadingIndicator.style.display = 'none';
-                addMessage('assistant', `Error: ${data.error}`);
-            } else {
-                // Still processing, poll again in 3 seconds (extended for deployment)
-                // Extended timeout for long-running tasks in deployment
-                const elapsedTime = Date.now() - startTime;
-                if (elapsedTime > 600000) { // 10 minutes timeout
-                    loadingIndicator.style.display = 'none';
-                    addMessage('assistant', 'The request is taking longer than expected. This may be due to deployment environment limitations. Please try with a shorter, more specific question.');
-                    return;
-                }
-                setTimeout(() => pollTask(taskId, type, loadingIndicator, retryCount, startTime), 3000);
-            }
-        })
-        .catch(error => {
-            console.error('Polling error:', error);
-
-            // If it's a JSON parsing error and we haven't retried much, try again
-            if (error.message.includes('JSON') && retryCount < 3) {
-                console.log(`Retrying poll for task ${taskId}, attempt ${retryCount + 1}`);
-                setTimeout(() => pollTask(taskId, type, loadingIndicator, retryCount + 1, startTime), 3000);
-                return;
-            }
-
-            loadingIndicator.style.display = 'none';
-            addMessage('assistant', `Connection error: ${error.message}. Please try again.`);
-        });
-    }
-
-    function sendMessage(type) {
+    async function sendMessage(type) {
         let input, loadingIndicator;
         if (type === 'initial') {
             input = document.getElementById('initialChatInput');
@@ -392,31 +320,110 @@
 
         addMessage('user', message);
         input.value = '';
-
         loadingIndicator.style.display = 'block';
 
-        fetch('/chat', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'X-Requested-With': 'XMLHttpRequest'
-            },
-            body: JSON.stringify({ message: message })
-        })
-        .then(response => response.json())
-        .then(data => {
-            if (data.error) {
-                loadingIndicator.style.display = 'none';
-                addMessage('assistant', `Error: ${data.error}`);
-            } else if (data.task_id) {
-                // Start polling for the task
-                pollTask(data.task_id, type, loadingIndicator, 0, Date.now());
+        // Create the assistant message div early for streaming
+        const messagesDiv = document.getElementById('messages');
+        const messageDiv = document.createElement('div');
+        messageDiv.className = 'message assistant';
+        const messageContent = document.createElement('div');
+        messageContent.className = 'message-content';
+        messageContent.innerHTML = '<span class="streaming-cursor" style="opacity:0.5;">▍</span>';
+        messageDiv.appendChild(messageContent);
+        messagesDiv.appendChild(messageDiv);
+
+        let fullText = '';
+        let renderPending = false;
+
+        function renderContent() {
+            renderPending = false;
+            messageContent.innerHTML = DOMPurify.sanitize(marked.parse(fullText)) +
+                '<span class="streaming-cursor" style="opacity:0.5;">▍</span>';
+            messagesDiv.scrollTop = messagesDiv.scrollHeight;
+        }
+
+        function scheduleRender() {
+            if (!renderPending) {
+                renderPending = true;
+                requestAnimationFrame(renderContent);
             }
-        })
-        .catch(error => {
+        }
+
+        try {
+            const response = await fetch('/chat-stream', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-Requested-With': 'XMLHttpRequest'
+                },
+                body: JSON.stringify({ message: message })
+            });
+
+            if (!response.ok) {
+                const errorData = await response.json().catch(() => ({}));
+                throw new Error(errorData.error || `HTTP ${response.status}`);
+            }
+
+            const reader = response.body.getReader();
+            const decoder = new TextDecoder();
+            let buffer = '';
+
+            while (true) {
+                const { done, value } = await reader.read();
+                if (done) break;
+
+                buffer += decoder.decode(value, { stream: true });
+
+                // Process SSE events
+                const lines = buffer.split('\n');
+                buffer = lines.pop(); // Keep incomplete line in buffer
+
+                for (const line of lines) {
+                    if (line.startsWith('data: ')) {
+                        try {
+                            const data = JSON.parse(line.slice(6));
+                            if (data.chunk) {
+                                fullText += data.chunk;
+                                scheduleRender();
+                            } else if (data.done) {
+                                // Final render without cursor
+                                messageContent.innerHTML = DOMPurify.sanitize(marked.parse(fullText));
+                                messagesDiv.scrollTop = messagesDiv.scrollHeight;
+                                // MathJax typeset
+                                if (fullText.includes('$')) {
+                                    loadMathJax().then(function() {
+                                        if (window.MathJax && MathJax.typesetPromise) {
+                                            MathJax.typesetPromise([messageDiv]);
+                                        }
+                                    });
+                                }
+                            } else if (data.error) {
+                                messageContent.innerHTML = '<p>Error: ' + DOMPurify.sanitize(data.error) + '</p>';
+                            }
+                        } catch (e) {
+                            // Skip malformed JSON lines
+                        }
+                    }
+                }
+            }
+
+            // Ensure final render if stream ended without explicit done event
+            if (fullText && !messageContent.querySelector('.streaming-cursor') === false) {
+                messageContent.innerHTML = DOMPurify.sanitize(marked.parse(fullText));
+                messagesDiv.scrollTop = messagesDiv.scrollHeight;
+            }
+
             loadingIndicator.style.display = 'none';
-            addMessage('assistant', `Error: ${error}`);
-        });
+            if (type === 'initial') {
+                document.getElementById('initialChatInputContainer').style.display = 'none';
+                document.getElementById('exampleScenariosContainer').style.display = 'none';
+                document.getElementById('followUpChatInputContainer').style.display = 'block';
+                document.getElementById('newScenarioButton').style.display = 'block';
+            }
+        } catch (error) {
+            loadingIndicator.style.display = 'none';
+            messageContent.innerHTML = '<p>Error: ' + DOMPurify.sanitize(error.message) + '. Please try again.</p>';
+        }
     }
 
     function analyzeNewScenario() {

@@ -1,4 +1,4 @@
-from flask import Flask, render_template, request, jsonify, session
+from flask import Flask, render_template, request, jsonify, session, Response, stream_with_context
 from flask_cors import CORS
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
@@ -166,6 +166,40 @@ def call_gemini(messages, timeout=600):
             return response.choices[0].message.content
         raise
 
+def call_gemini_stream(messages, timeout=600):
+    """Call Gemini API with streaming, yielding text chunks. Falls back to GPT-5-nano on rate limit."""
+    try:
+        response = client.chat.completions.create(
+            model=PRIMARY_MODEL,
+            messages=messages,
+            timeout=timeout,
+            stream=True
+        )
+        for chunk in response:
+            if chunk.choices and chunk.choices[0].delta and chunk.choices[0].delta.content:
+                yield chunk.choices[0].delta.content
+    except Exception as e:
+        error_str = str(e).lower()
+        is_rate_limit = (
+            "429" in str(e) or
+            "rate limit" in error_str or
+            "quota" in error_str or
+            "resource_exhausted" in error_str
+        )
+        if is_rate_limit:
+            logging.warning(f"Rate limit hit on {PRIMARY_MODEL}, falling back to {FALLBACK_MODEL}: {e}")
+            response = openai_client.chat.completions.create(
+                model=FALLBACK_MODEL,
+                messages=messages,
+                timeout=timeout,
+                stream=True
+            )
+            for chunk in response:
+                if chunk.choices and chunk.choices[0].delta and chunk.choices[0].delta.content:
+                    yield chunk.choices[0].delta.content
+        else:
+            raise
+
 def pg_save_task(task_id, status, user_id=None, message=None, result=None, error=None, completed_at=None):
     """Upsert a task record in PostgreSQL."""
     try:
@@ -277,14 +311,10 @@ def run_background_task(func, *args, **kwargs):
     thread = threading.Thread(target=func, args=args, kwargs=kwargs)
     thread.start()
 
-def _handle_initial_chat_sync(user_message, task_id):
-    try:
-        tasks[task_id]['status'] = 'processing'
-        pg_save_task(task_id, 'processing', user_id=tasks[task_id]['user_id'], message=user_message)
-
-        model_code, model_variables = load_model_data()
-
-        prompt = f"""You are an expert economist analyzing the UK economy using the OBR's macroeconomic model. The user will ask about the impact of an economic shock. Your task is to trace the impact of this shock through the model, explaining the steps in words.
+def _build_initial_messages(user_message):
+    """Build the messages list for an initial chat request."""
+    model_code, model_variables = load_model_data()
+    prompt = f"""You are an expert economist analyzing the UK economy using the OBR's macroeconomic model. The user will ask about the impact of an economic shock. Your task is to trace the impact of this shock through the model, explaining the steps in words.
 
 Here is the model code:
 {model_code}
@@ -336,12 +366,49 @@ Analysis of the shock's impact, explaining for each step:
 LONG-RUN OUTCOMES
 
 """
-        logging.info(f"Prompt length: {len(prompt)} characters")
+    logging.info(f"Prompt length: {len(prompt)} characters")
+    return [
+        {"role": "system", "content": "You are an expert economist."},
+        {"role": "user", "content": prompt}
+    ]
 
-        messages = [
-            {"role": "system", "content": "You are an expert economist."},
-            {"role": "user", "content": prompt}
-        ]
+def _build_contextual_messages(user_message, conversation_history):
+    """Build the messages list for a follow-up chat request."""
+    model_code, model_variables = load_model_data()
+    system_content = f"""You are an expert economist analyzing the UK economy using the OBR's macroeconomic model. The user has asked about the impact of an economic shock and this has been analysed. The user may have additional questions or comments about the analysis which you should respond to.
+
+CRITICAL FORMATTING REQUIREMENTS:
+- Provide clear, well-structured responses using proper markdown formatting
+- Use proper markdown headings (# ##) for structure
+- For equations, use simple mathematical notation that can be displayed as plain text
+- Structure your response with clear paragraph breaks and bullet points where helpful
+- Be direct and concise in your responses
+- If referencing specific model equations or variables, explain them clearly
+
+Here is the model code:
+{model_code}
+
+Here are the model variables:
+{model_variables}
+"""
+    recent_history = conversation_history[-10:]
+    system_content += "\n\nPrevious Conversation Context:\n"
+    for msg in recent_history:
+        role_label = "User" if msg["role"] == "user" else "AI Economist"
+        system_content += f"{role_label}: {msg['content']}\n"
+    system_content += "\nPlease use this conversation history to provide a contextually relevant response to the user's new message below."
+    logging.info(f"Total message length: {len(system_content) + len(user_message)} characters")
+    return [
+        {"role": "system", "content": system_content},
+        {"role": "user", "content": f"The latest follow up question is: {user_message}"}
+    ]
+
+def _handle_initial_chat_sync(user_message, task_id):
+    try:
+        tasks[task_id]['status'] = 'processing'
+        pg_save_task(task_id, 'processing', user_id=tasks[task_id]['user_id'], message=user_message)
+
+        messages = _build_initial_messages(user_message)
         ai_response = call_gemini(messages)
 
         user_id = tasks[task_id]['user_id']
@@ -369,37 +436,7 @@ def _handle_contextual_chat_sync(user_message, conversation_history, task_id):
         tasks[task_id]['status'] = 'processing'
         pg_save_task(task_id, 'processing', user_id=tasks[task_id]['user_id'], message=user_message)
 
-        model_code, model_variables = load_model_data()
-
-        system_content = f"""You are an expert economist analyzing the UK economy using the OBR's macroeconomic model. The user has asked about the impact of an economic shock and this has been analysed. The user may have additional questions or comments about the analysis which you should respond to.
-
-CRITICAL FORMATTING REQUIREMENTS:
-- Provide clear, well-structured responses using proper markdown formatting
-- Use proper markdown headings (# ##) for structure
-- For equations, use simple mathematical notation that can be displayed as plain text
-- Structure your response with clear paragraph breaks and bullet points where helpful
-- Be direct and concise in your responses
-- If referencing specific model equations or variables, explain them clearly
-
-Here is the model code:
-{model_code}
-
-Here are the model variables:
-{model_variables}
-"""
-        recent_history = conversation_history[-10:]
-        system_content += "\n\nPrevious Conversation Context:\n"
-        for msg in recent_history:
-            role_label = "User" if msg["role"] == "user" else "AI Economist"
-            system_content += f"{role_label}: {msg['content']}\n"
-        system_content += "\nPlease use this conversation history to provide a contextually relevant response to the user's new message below."
-
-        messages = [
-            {"role": "system", "content": system_content},
-            {"role": "user", "content": f"The latest follow up question is: {user_message}"}
-        ]
-        logging.info(f"Total message length: {sum(len(m['content']) for m in messages)} characters")
-
+        messages = _build_contextual_messages(user_message, conversation_history)
         ai_response = call_gemini(messages)
 
         conversation_history.append({"role": "user", "content": user_message})
@@ -467,6 +504,63 @@ def chat():
     except Exception as e:
         logging.error(f"Error starting chat task: {e}")
         return jsonify({'error': 'An internal error occurred. Please try again.'}), 500
+
+@app.route('/chat-stream', methods=['POST'])
+@limiter.limit("10 per minute")
+@require_json_csrf
+def chat_stream():
+    """Streaming chat endpoint using Server-Sent Events."""
+    data = request.get_json()
+    if not data or 'message' not in data:
+        return jsonify({'error': 'No message provided'}), 400
+
+    user_message = sanitize_user_input(data['message'])
+    if not user_message:
+        return jsonify({'error': 'Message cannot be empty'}), 400
+    if len(user_message) > 2000:
+        return jsonify({'error': 'Message too long (max 2000 characters)'}), 400
+
+    user_id = get_user_id()
+    conversation_history = get_conversation_history(user_id)
+
+    if not conversation_history:
+        messages = _build_initial_messages(user_message)
+    else:
+        messages = _build_contextual_messages(user_message, conversation_history)
+
+    def generate():
+        full_response = []
+        try:
+            for chunk in call_gemini_stream(messages):
+                full_response.append(chunk)
+                yield f"data: {json.dumps({'chunk': chunk})}\n\n"
+
+            # Save conversation history after stream completes
+            ai_response = ''.join(full_response)
+            if not conversation_history:
+                history = [
+                    {"role": "user", "content": user_message},
+                    {"role": "assistant", "content": ai_response[:MAX_SESSION_RESPONSE_LENGTH]}
+                ]
+            else:
+                conversation_history.append({"role": "user", "content": user_message})
+                conversation_history.append({"role": "assistant", "content": ai_response[:MAX_SESSION_RESPONSE_LENGTH]})
+                history = conversation_history
+            save_conversation_history(user_id, history)
+
+            yield f"data: {json.dumps({'done': True})}\n\n"
+        except Exception as e:
+            logging.error(f"Streaming error: {e}\n{traceback.format_exc()}")
+            yield f"data: {json.dumps({'error': str(e)})}\n\n"
+
+    return Response(
+        stream_with_context(generate()),
+        mimetype='text/event-stream',
+        headers={
+            'Cache-Control': 'no-cache',
+            'X-Accel-Buffering': 'no'
+        }
+    )
 
 @app.route('/poll/<task_id>', methods=['GET'])
 def poll_task(task_id):
