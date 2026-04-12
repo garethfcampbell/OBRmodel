@@ -548,7 +548,8 @@ def calculate():
                 User's question: {user_message}
 
                 CRITICAL FORMATTING REQUIREMENTS:
-                - Use LaTeX format for all mathematical equations (enclosed in $ or $$ symbols)
+                - When referring to variable names in prose text, use markdown backticks (e.g. `IBUS`, `KGAP`, `GDPMPS`), NOT LaTeX $ symbols
+                - Only use LaTeX $ or $$ symbols for actual mathematical equations and formulas (e.g. $GDPMPS = C + I + G + X - M$)
                 - Use proper markdown headings (# ## ###) for clear section structure
                 - Structure your response with clear step-by-step analysis
                 - Make sure all LaTeX equations are properly formatted for MathJax rendering
