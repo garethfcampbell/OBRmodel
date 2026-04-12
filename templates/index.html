@@ -320,7 +320,12 @@
 
         addMessage('user', message);
         input.value = '';
-        loadingIndicator.style.display = 'block';
+
+        // Immediately hide input areas and scenarios for initial requests
+        if (type === 'initial') {
+            document.getElementById('initialChatInputContainer').style.display = 'none';
+            document.getElementById('exampleScenariosContainer').style.display = 'none';
+        }
 
         // Create the assistant message div early for streaming
         const messagesDiv = document.getElementById('messages');
@@ -328,9 +333,10 @@
         messageDiv.className = 'message assistant';
         const messageContent = document.createElement('div');
         messageContent.className = 'message-content';
-        messageContent.innerHTML = '<span class="streaming-cursor" style="opacity:0.5;">▍</span>';
+        messageContent.innerHTML = '<div class="d-flex align-items-center"><div class="spinner-border spinner-border-sm me-2" role="status"><span class="visually-hidden">Loading...</span></div><span class="streaming-cursor" style="opacity:0.5;">▍</span></div>';
         messageDiv.appendChild(messageContent);
         messagesDiv.appendChild(messageDiv);
+        messagesDiv.scrollTop = messagesDiv.scrollHeight;
 
         let fullText = '';
         let renderPending = false;
@@ -415,13 +421,16 @@
 
             loadingIndicator.style.display = 'none';
             if (type === 'initial') {
-                document.getElementById('initialChatInputContainer').style.display = 'none';
-                document.getElementById('exampleScenariosContainer').style.display = 'none';
                 document.getElementById('followUpChatInputContainer').style.display = 'block';
                 document.getElementById('newScenarioButton').style.display = 'block';
             }
         } catch (error) {
             loadingIndicator.style.display = 'none';
+            if (type === 'initial') {
+                // Show input again on error so user can retry
+                document.getElementById('initialChatInputContainer').style.display = 'block';
+                document.getElementById('exampleScenariosContainer').style.display = 'block';
+            }
             messageContent.innerHTML = '<p>Error: ' + DOMPurify.sanitize(error.message) + '. Please try again.</p>';
         }
     }
